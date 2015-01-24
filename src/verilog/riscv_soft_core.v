@@ -23,8 +23,8 @@ module riscv_soft_core(
    reg [XPR_LEN-1:0] PC_IF;
 
    reg [XPR_LEN-1:0] PC_EX;
-
-   // inst pipeline register
+   reg [31:0] 	     inst_EX;
+   
    wire [4:0] 	      rs1_EX;
    wire [XPR_LEN-1:0] rs1_data_EX;
    wire [4:0] 	      rs2_EX;
