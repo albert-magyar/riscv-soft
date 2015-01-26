@@ -22,6 +22,20 @@ module riscv_soft_axi_lite_slave (
 				  output wire                          S_AXI_RVALID,
 				  input  wire                          S_AXI_RREADY
 				  );
+
+   riscv_soft_tile tile(
+			.clk(S_AXI_ACLK),
+			.reset(~S_AXI_ARESETN),
+			.htif_in_ready(),
+			.htif_in_valid(),
+			.htif_in_data(),
+			.htif_out_ready(),
+			.htif_out_valid(),
+			.htif_out_data(),
+			.htif_clk(),
+			.htif_clk_edge(),
+			.htif_debug_stats_pcr()
+			);
    
    
 endmodule

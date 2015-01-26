@@ -2,7 +2,8 @@ module riscv_soft_alu(
 		      operation,
 		      operand_1,
 		      operand_2,
-		      result
+		      result,
+		      cmp_true
 		      );
 
    parameter XPR_LEN = 32;
@@ -22,7 +23,10 @@ module riscv_soft_alu(
    input [XPR_LEN-1:0] 	    operand_1;
    input [XPR_LEN-1:0] 	    operand_2;
    output reg [XPR_LEN-1:0] result;
+   output 		    cmp_true;
 
+   assign cmp_true = result[0];
+   
    wire [LOG2_XPR_LEN-1:0]  shamt = operand_2[LOG2_XPR_LEN-1:0];
    
    always @(*) begin
