@@ -181,6 +181,13 @@ module riscv_soft_core(
 			      .wr_data(wb_data_WB)
 			      );
 
+   riscv_soft_imm_logic imm_sel(
+				.inst(instruction_EX),
+				.imm_sel(imm_sel_EX),
+				.imm(imm_EX)
+				);
+   
+
    riscv_soft_alu_src_mux src1_mux(
 				   .sel(alu_src_1_sel_EX),
 				   .imm(imm_EX),

@@ -1,6 +1,8 @@
+`include "riscv_soft_constants.v"
+
 module riscv_soft_imm_logic(
 			    inst,
-			    imm_type_sel,
+			    imm_sel,
 			    imm
 			    );
 

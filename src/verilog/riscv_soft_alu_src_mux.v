@@ -1,7 +1,15 @@
 module riscv_soft_alu_src_mux(
-
+			      sel,
+			      imm,
+			      PC,
+			      reg_data,
+			      fwd,
+			      bypass_data,
+			      output_data
 			      );
 
+   parameter XPR_LEN = 32;
+   
    input [1:0] sel;
    input [XPR_LEN-1:0] imm;
    input [XPR_LEN-1:0] PC;
@@ -13,11 +21,11 @@ module riscv_soft_alu_src_mux(
    
    always @(*) begin
       case (sel)
-	`ALU_SRC_IMM : output_data = imm;
-	`ALU_SRC_PC : output_data = PC;
-	`ALU_SRC_REG : output_data = reg_data;
-	`ALU_SRC_ZERO : output_data = 0;
-	default : output_data = 0;
+	`ALU_SRC_IMM : output_data_unbypassed = imm;
+	`ALU_SRC_PC : output_data_unbypassed = PC;
+	`ALU_SRC_REG : output_data_unbypassed = reg_data;
+	`ALU_SRC_ZERO : output_data_unbypassed = 0;
+	default : output_data_unbypassed = 0;
       endcase // case (sel)
    end
 

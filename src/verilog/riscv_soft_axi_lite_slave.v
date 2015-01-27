@@ -23,6 +23,8 @@ module riscv_soft_axi_lite_slave (
 				  input  wire                          S_AXI_RREADY
 				  );
 
+    parameter XPR_LEN = 32;
+
    localparam S_IDLE = 3'd0,
      S_WRITE_GET_DATA = 3'd1,
      S_WRITE_SETUP = 3'd2,
@@ -36,8 +38,8 @@ module riscv_soft_axi_lite_slave (
    wire 		   host_req_valid;
    wire [1:0] 		   host_req_op;
    wire [2:0] 		   host_req_op_type;
-   reg [XPR_LEN-1:0] 	   host_req_addr;
-   reg [XPR_LEN-1:0] 	   host_req_data;
+   wire [XPR_LEN-1:0] 	   host_req_addr;
+   wire [XPR_LEN-1:0] 	   host_req_data;
    wire 		   host_resp_valid;
    wire [XPR_LEN-1:0] 	   host_resp_data;   
 

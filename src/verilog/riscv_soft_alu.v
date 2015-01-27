@@ -10,8 +10,8 @@ module riscv_soft_alu(
 
    parameter XPR_LEN = 32;
 
-   function integer log2;
-      input integer i;
+   function integer log2(input integer value);
+      integer i;
       begin
 	 i = value - 1;
 	 for (log2 = 0; value > 0; log2 = log2 + 1)

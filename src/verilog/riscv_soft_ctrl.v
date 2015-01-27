@@ -18,6 +18,7 @@ module riscv_soft_ctrl(
 		       alu_src_1_sel_EX,
 		       alu_src_2_sel_EX,
 		       alu_op_EX,
+		       cmp_true,
 		       d_cache_req_ready,
 		       d_cache_req_valid,
 		       d_cache_req_op,
@@ -30,6 +31,11 @@ module riscv_soft_ctrl(
    parameter XPR_LEN = 32;
 
    localparam INST_LEN = 32;
+
+   function [6:0] opcode;
+      input [INST_LEN-1:0] instruction;
+      opcode = instruction[6:0];
+   endfunction // case
 
    function [6:0] funct7;
       input [INST_LEN-1:0] instruction;
@@ -73,6 +79,13 @@ module riscv_soft_ctrl(
    output reg [1:0] alu_src_2_sel_EX;
    output reg [3:0] alu_op_EX;
 
+   // Branch comparison result
+   input 	    cmp_true;
+
+   // Branch taken?
+   reg 		    branch_taken;
+
+   
    // Signals for d_cache request
    input 	    d_cache_req_ready;
    reg 		    d_cache_req_valid_unkilled;
@@ -94,6 +107,7 @@ module riscv_soft_ctrl(
    
    
    always @(*) begin
+      branch_taken = 1'b0;
       case (opcode(instruction_EX))
 	`OP_IMM : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
@@ -167,6 +181,7 @@ module riscv_soft_ctrl(
 	
 
 	`OP_JAL : begin
+	   branch_taken = 1'b1;
 	   alu_src_1_sel_EX = `ALU_SRC_PC;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
 	   next_PC_src_PIF  = `PC_SRC_JUMP;
@@ -178,6 +193,7 @@ module riscv_soft_ctrl(
 	end
 	
 	`OP_JALR : begin
+	   branch_taken = 1'b1;
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
 	   next_PC_src_PIF  = `PC_SRC_JUMP;
@@ -189,6 +205,7 @@ module riscv_soft_ctrl(
 	end
 
 	`OP_BRANCH : begin
+	   branch_taken = cmp_true;
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_REG;
 	   next_PC_src_PIF  = `PC_SRC_BRANCH;
@@ -252,8 +269,7 @@ module riscv_soft_ctrl(
       endcase // case (opcode(instruction_EX))
    end // always @ (*)
 
-   wire is_load_EX;
-   assign is_load_EX = opcode(instruction_EX) = `OP_LOAD;
+   assign is_load_EX = opcode(instruction_EX) == `OP_LOAD;
 
    
    // Pipelined control signals
@@ -271,7 +287,16 @@ module riscv_soft_ctrl(
    
    
    // Hazard logic
+   wire is_load_EX;
+   reg is_load_WB;
+   
+   wire kill_IF;
+   wire kill_EX;
+   wire kill_WB;
 
+   reg 	inherited_kill_EX;
+   reg 	inherited_kill_WB;
+   
    wire [4:0] rs1_EX;
    wire [4:0] rs2_EX;
    wire [4:0] rd_EX;
