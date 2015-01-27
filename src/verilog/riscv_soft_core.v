@@ -1,3 +1,10 @@
+`include "riscv_soft_constants.v"
+`include "riscv_soft_ctrl.v"
+`include "riscv_soft_alu.v"
+`include "riscv_soft_alu_src_mux.v"
+`include "riscv_soft_imm_logic.v"
+`include "riscv_soft_regfile.v"
+
 module riscv_soft_core(
 		       clk,
 		       reset,

@@ -1,3 +1,5 @@
+`include "riscv_soft_constants.v"
+
 module riscv_soft_alu(
 		      operation,
 		      operand_1,

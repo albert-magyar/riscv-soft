@@ -18,6 +18,7 @@ module riscv_soft_imm_logic(
 	`IMM_U : imm = {inst[31:12],12'b0};
 	`IMM_J : imm = $signed({inst[31],inst[19:12],inst[20],inst[30:21],1'b0});
 	default : imm = 0;
+      endcase // case (imm_sel)
    end
 
 endmodule // riscv_soft_imm_logic

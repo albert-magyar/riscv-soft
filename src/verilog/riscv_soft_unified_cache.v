@@ -5,7 +5,7 @@ module riscv_soft_unified_cache(
 				i_fetch_req_valid,
 				i_fetch_req_addr,
 				i_fetch_resp_valid,
-				i_fetch_resp_data
+				i_fetch_resp_data,
 				data_req_ready,
 				data_req_valid,
 				data_req_op,

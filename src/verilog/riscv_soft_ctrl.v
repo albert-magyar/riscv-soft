@@ -1,3 +1,5 @@
+`include "riscv_soft_constants.v"
+
 module riscv_soft_ctrl(
 		       clk,
 		       reset,
@@ -6,7 +8,7 @@ module riscv_soft_ctrl(
 		       stall_WB,
 		       fwd_alu_src_1_EX,
 		       fwd_alu_src_2_EX,
-		       fwd_dcache_data_EX,
+		       fwd_d_cache_data_EX,
 		       next_PC_src_PIF,
 		       i_cache_req_ready,
 		       i_cache_req_valid,
@@ -16,11 +18,11 @@ module riscv_soft_ctrl(
 		       alu_src_1_sel_EX,
 		       alu_src_2_sel_EX,
 		       alu_op_EX,
-		       dcache_req_ready,
-		       dcache_req_valid,
-		       dcache_req_op,
-		       dcache_req_op_type,
-		       dcache_resp_valid,
+		       d_cache_req_ready,
+		       d_cache_req_valid,
+		       d_cache_req_op,
+		       d_cache_req_op_type,
+		       d_cache_resp_valid,
 		       wb_data_src_WB,
 		       wr_reg_WB
 		       );
@@ -28,11 +30,34 @@ module riscv_soft_ctrl(
    parameter XPR_LEN = 32;
 
    localparam INST_LEN = 32;
+
+   function [6:0] funct7;
+      input [INST_LEN-1:0] instruction;
+      funct7 = instruction[31:25];
+   endfunction // case
+
+   function [2:0] funct3;
+      input [INST_LEN-1:0] instruction;
+      funct3 = instruction[14:12];
+   endfunction // case
+
+   function [9:0] cat_funct7_funct3;
+      input [INST_LEN-1:0] instruction;
+      cat_funct7_funct3 = {instruction[31:25],instruction[14:12]};
+   endfunction
    
    input 	    clk;
    input 	    reset;
    input [31:0]     instruction_EX;
 
+   // Hazard and bypass signals
+   output 	    stall_IF;
+   output 	    stall_EX;
+   output 	    stall_WB;
+   output 	    fwd_alu_src_1_EX;
+   output 	    fwd_alu_src_2_EX;
+   output 	    fwd_d_cache_data_EX;
+   
    // Pre-instruction fetch signals
    output reg [1:0] next_PC_src_PIF;
    input 	    i_cache_req_ready;
@@ -48,19 +73,19 @@ module riscv_soft_ctrl(
    output reg [1:0] alu_src_2_sel_EX;
    output reg [3:0] alu_op_EX;
 
-   // Signals for dcache request
-   input 	    dcache_req_ready;
-   reg 		    dcache_req_valid_unkilled;
-   output reg 	    dcache_req_valid;
-   output reg [1:0] dcache_req_op;
-   output reg [2:0] dcache_op_type;
+   // Signals for d_cache request
+   input 	    d_cache_req_ready;
+   reg 		    d_cache_req_valid_unkilled;
+   output reg 	    d_cache_req_valid;
+   output reg [1:0] d_cache_req_op;
+   output reg [2:0] d_cache_req_op_type;
 
    // Signals not used in EX stage
    reg 		    wr_reg_unkilled_EX;		    
    reg [1:0] 	    wb_data_src_EX;
 
-   // Signals from dcache response
-   input 	    dcache_resp_valid;
+   // Signals from d_cache response
+   input 	    d_cache_resp_valid;
    
    // Control signals for WB stage
    reg 		    wr_reg_unkilled_WB;		    
@@ -73,138 +98,143 @@ module riscv_soft_ctrl(
 	`OP_IMM : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = `WB_SRC_ALU;
-	   imm_sel_EX = `IMM_S
+	   imm_sel_EX = `IMM_S;
 	   case (funct3(instruction_EX))
-	     `ADDI : alu_op_EX = `ALU_OP_ADD;
-	     `SLTI : alu_op_EX = `ALU_OP_SLT;
-	     `ANDI : alu_op_EX = `ALU_OP_AND;
-	     `ORI : alu_op_EX = `ALU_OP_OR;
-	     `XORI : alu_op_EX = `ALU_OP_XOR;
-	     `SLLI : alu_op_EX = `ALU_OP_SLL;
-	     `SRLI : alu_op_EX = `ALU_OP_SRL;
-	     `SRAI : alu_op_EX = `ALU_OP_SRA;
+	     `REG_IMM_FUNCT3_ADDI : alu_op_EX = `ALU_OP_ADD;
+	     `REG_IMM_FUNCT3_SLTI : alu_op_EX = `ALU_OP_SLT;
+	     `REG_IMM_FUNCT3_ANDI : alu_op_EX = `ALU_OP_AND;
+	     `REG_IMM_FUNCT3_ORI : alu_op_EX = `ALU_OP_OR;
+	     `REG_IMM_FUNCT3_XORI : alu_op_EX = `ALU_OP_XOR;
+	     `REG_IMM_FUNCT3_SLLI : alu_op_EX = `ALU_OP_SLL;
+	     `REG_IMM_FUNCT3_SRLI_SRAI : begin
+		case (funct7(instruction_EX))
+		  `FUNCT7_SRLI : alu_op_EX = `ALU_OP_SRL;
+		  `FUNCT7_SRAI : alu_op_EX = `ALU_OP_SRA;
+		  default : alu_op_EX = 4'bxxxx;
+		endcase // case (funct7(instruction_EX))
+	     end
 	     default : alu_op_EX = 4'bxxxx;
 	   endcase // case (funct3(instruction_EX))
 	end
 
-	`LUI : begin
+	`OP_LUI : begin
 	   alu_src_1_sel_EX = `ALU_SRC_ZERO;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = `WB_SRC_ALU;
 	   imm_sel_EX = `IMM_U;
 	   alu_op_EX = `ALU_OP_ADD;
 	end
-	`AUIPC : begin
+	`OP_AUIPC : begin
 	   alu_src_1_sel_EX = `ALU_SRC_PC;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = `WB_SRC_ALU;
 	   imm_sel_EX = `IMM_U;
 	   alu_op_EX = `ALU_OP_ADD;
 	end
 
-	`OP : begin
+	`OP_OP : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_REG;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = `WB_SRC_ALU;
 	   imm_sel_EX = 3'bxxx;
 	   case(cat_funct7_funct3(instruction_EX))
-	     `ADD : alu_op_EX = `ALU_OP_ADD;
-	     `SLT : alu_op_EX = `ALU_OP_SLT;
-	     `SLTU : alu_op_EX = `ALU_OP_SLTU;
-	     `AND : alu_op_EX = `ALU_OP_AND;
-	     `OR : alu_op_EX = `ALU_OP_OR;
-	     `XOR : alu_op_EX = `ALU_OP_XOR;
-	     `SLL : alu_op_EX = `ALU_OP_SLL;
-	     `SRL : alu_op_EX = `ALU_OP_SRL;
-	     `SUB : alu_op_EX = `ALU_OP_SUB;
-	     `SRA : alu_op_EX = `ALU_OP_SRA;
+	     `REG_REG_FUNCT_ADD : alu_op_EX = `ALU_OP_ADD;
+	     `REG_REG_FUNCT_SLT : alu_op_EX = `ALU_OP_SLT;
+	     `REG_REG_FUNCT_SLTU : alu_op_EX = `ALU_OP_SLTU;
+	     `REG_REG_FUNCT_AND : alu_op_EX = `ALU_OP_AND;
+	     `REG_REG_FUNCT_OR : alu_op_EX = `ALU_OP_OR;
+	     `REG_REG_FUNCT_XOR : alu_op_EX = `ALU_OP_XOR;
+	     `REG_REG_FUNCT_SLL : alu_op_EX = `ALU_OP_SLL;
+	     `REG_REG_FUNCT_SRL : alu_op_EX = `ALU_OP_SRL;
+	     `REG_REG_FUNCT_SUB : alu_op_EX = `ALU_OP_SUB;
+	     `REG_REG_FUNCT_SRA : alu_op_EX = `ALU_OP_SRA;
 	     default : alu_op_EX = 4'bxxxx;
 	   endcase // case (cat_funct7_funct3(instruction_EX))
 	end // case: `OP
 	
 
-	`JAL : begin
+	`OP_JAL : begin
 	   alu_src_1_sel_EX = `ALU_SRC_PC;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_JUMP;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   next_PC_src_PIF  = `PC_SRC_JUMP;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = `WB_SRC_PC_PLUS_4;
 	   imm_sel_EX = `IMM_J;
 	   alu_op_EX = `ALU_OP_ADD;
 	end
 	
-	`JALR : begin
+	`OP_JALR : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_JUMP;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   next_PC_src_PIF  = `PC_SRC_JUMP;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = `WB_SRC_PC_PLUS_4;
 	   imm_sel_EX = `IMM_I;
 	   alu_op_EX = `ALU_OP_ADD;
 	end
 
-	`BRANCH : begin
+	`OP_BRANCH : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_REG;
-	   next_PC_src_PIF  = `PC_BRANCH;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
-	   wb_data_src_EX = `WB_SRC_NONE;
+	   next_PC_src_PIF  = `PC_SRC_BRANCH;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
+	   wb_data_src_EX = 2'bxx;
 	   imm_sel_EX = `IMM_B;
 	   case (funct3(instruction_EX))
-	     `BEQ : alu_op_EX = `ALU_OP_SEQ;
-	     `BNE : alu_op_EX = `ALU_OP_SNE;
-	     `BLT : alu_op_EX = `ALU_OP_SLT;
-	     `BLTU : alu_op_EX = `ALU_OP_SLTU;
-	     `BGE : alu_op_EX = `ALU_OP_SGE;
-	     `BGEU : alu_op_EX = `ALU_OP_SGEU;
+	     `BRANCH_FUNCT3_BEQ : alu_op_EX = `ALU_OP_SEQ;
+	     `BRANCH_FUNCT3_BNE : alu_op_EX = `ALU_OP_SNE;
+	     `BRANCH_FUNCT3_BLT : alu_op_EX = `ALU_OP_SLT;
+	     `BRANCH_FUNCT3_BLTU : alu_op_EX = `ALU_OP_SLTU;
+	     `BRANCH_FUNCT3_BGE : alu_op_EX = `ALU_OP_SGE;
+	     `BRANCH_FUNCT3_BGEU : alu_op_EX = `ALU_OP_SGEU;
 	     default : alu_op_EX = 4'bxxxx;
 	   endcase // case (funct3(instruction_EX))
 	end // case: `BRANCH
 	
-	`LOAD : begin
+	`OP_LOAD : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = `MEM_LOAD;
-	   dcache_op_type = funct3(instruction_EX);
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = `MEM_LOAD;
+	   d_cache_req_op_type = funct3(instruction_EX);
 	   wb_data_src_EX = `WB_SRC_MEM;
 	   imm_sel_EX = `IMM_I;
 	   alu_op_EX = `ALU_OP_ADD;
 	end
-	`STORE : begin
+	`OP_STORE : begin
 	   alu_src_1_sel_EX = `ALU_SRC_REG;
 	   alu_src_2_sel_EX = `ALU_SRC_IMM;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = `MEM_STORE;
-	   dcache_op_type = funct3(instruction_EX);
-	   wb_data_src_EX = `WB_SRC_NONE;
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = `MEM_STORE;
+	   d_cache_req_op_type = funct3(instruction_EX);
+	   wb_data_src_EX = 2'bxx;
 	   imm_sel_EX = `IMM_S;
 	   alu_op_EX = `ALU_OP_ADD;
 	end
 
-	`MISC_MEM : begin
+	`OP_MISC_MEM : begin
 	   alu_src_1_sel_EX = 2'bxx;
 	   alu_src_2_sel_EX = 2'bxx;
-	   next_PC_src_PIF  = `PC_PLUS_4;
-	   dcache_req_op = `MEM_FENCE;
-	   dcache_op_type = 3'bxxx;
-	   wb_data_src_EX = `WB_SRC_NONE;
+	   next_PC_src_PIF  = `PC_SRC_PLUS_4;
+	   d_cache_req_op = `MEM_FENCE;
+	   d_cache_req_op_type = 3'bxxx;
+	   wb_data_src_EX = 2'bxx;
 	   imm_sel_EX = 3'bxxx;	   
 	   alu_op_EX = 4'bxxxx;
 	end
@@ -213,8 +243,8 @@ module riscv_soft_ctrl(
 	   alu_src_1_sel_EX = 2'bxx;
 	   alu_src_2_sel_EX = 2'bxx;
 	   next_PC_src_PIF = 1'bx;
-	   dcache_req_op = 2'bxx;
-	   dcache_op_type = 3'bxxx;
+	   d_cache_req_op = 2'bxx;
+	   d_cache_req_op_type = 3'bxxx;
 	   wb_data_src_EX = 2'bxx;
 	   imm_sel_EX = 3'bxxx;
 	   alu_op_EX = 4'bxxxx;
@@ -222,15 +252,20 @@ module riscv_soft_ctrl(
       endcase // case (opcode(instruction_EX))
    end // always @ (*)
 
+   wire is_load_EX;
+   assign is_load_EX = opcode(instruction_EX) = `OP_LOAD;
+
+   
    // Pipelined control signals
    always @(posedge clk) begin
       if (!stall_EX) begin
-	 kill_EX <= kill_IF;
+	 inherited_kill_EX <= kill_IF;
       end
       if (!stall_WB) begin
-	 kill_WB <= kill_EX;
+	 is_load_WB <= is_load_EX;
+	 inherited_kill_WB <= kill_EX;
 	 wr_reg_unkilled_WB <= wr_reg_unkilled_EX;
-	 wb_data_src_WB <= wb_reg_data_src_EX;
+	 wb_data_src_WB <= wb_data_src_EX;
       end
    end
    
@@ -262,22 +297,22 @@ module riscv_soft_ctrl(
    assign fwd_alu_src_2_EX = raw_alu_src_2 && !is_load_WB;
 
    // RAW dependencies on loads
-   assign load_use_ALU = is_load_WB && (raw_alu_src_1 || raw_alu_src_2);
+   assign load_use_ALU = !kill_WB && is_load_WB && (raw_alu_src_1 || raw_alu_src_2);
    assign store_after_load = is_load_WB && (opcode(instruction_EX) == `OP_STORE)
      && (rs2_EX == rd_WB) && not_r0_WB;
-   assign fwd_dcache_data_EX = store_after_load && dcache_resp_valid;
+   assign fwd_d_cache_data_EX = store_after_load && d_cache_resp_valid;
 
-   // Branches that can't graduate while icache is busy
-   assign branch_stall = branch_taken && !icache_req_ready;
+   // Branches that can't graduate while i_cache is busy
+   assign branch_stall = branch_taken && !i_cache_req_ready;
 
-   assign stall_WB = !dcache_resp_valid;
-   assign stall_EX = stall_WB || !dcache_req_ready
+   assign stall_WB = !d_cache_resp_valid;
+   assign stall_EX = stall_WB || !d_cache_req_ready
 		     || load_use_ALU || branch_stall;
    assign stall_IF = stall_EX;
    
    assign kill_WB = inherited_kill_WB || stall_WB;
    assign kill_EX = inherited_kill_EX || stall_EX;
-   assign kill_IF = !dcache_resp_valid;
+   assign kill_IF = !d_cache_resp_valid;
       
    always @(posedge clk) begin
       if (!stall_WB) begin
